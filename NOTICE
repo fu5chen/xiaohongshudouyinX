@@ -1,0 +1,10 @@
+Video to Live Photo
+Copyright 2026 杨振
+
+This product includes software originally developed by 杨振.
+Redistributions must retain this NOTICE where required by the Apache License 2.0.
+
+live-photo.js adapts Apple MakerNote and timed QuickTime metadata layouts from:
+https://github.com/yangzhen-23/video-to-live-photo/blob/main/livephoto/core/apple.py
+Modified for this extension: JavaScript port, bounds checks, preserved original
+media offsets, browser-only Blob processing, codec guards. No external executable.
