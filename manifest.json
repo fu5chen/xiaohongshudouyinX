@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "红薯收纳 · 本帖素材下载",
-  "version": "1.3.1",
-  "description": "一键收纳当前小红书笔记的图片、视频和 Live，按作者、发布时间和文案归档。",
+  "name": "红薯收纳 · 小红书、抖音与 X 素材下载",
+  "version": "1.5.1",
+  "description": "在小红书、抖音和 X 帖子内保存图片、封面和视频，PNG 最大 3 MB，支持并行下载。",
   "minimum_chrome_version": "120",
   "permissions": [
     "activeTab",
@@ -13,22 +13,74 @@
   ],
   "host_permissions": [
     "https://*.xiaohongshu.com/*",
-    "https://*.xhscdn.com/*"
+    "https://*.xhscdn.com/*",
+    "https://*.douyin.com/*",
+    "https://*.douyinvod.com/*",
+    "https://*.douyinpic.com/*",
+    "https://*.byteimg.com/*",
+    "https://*.ibytedtos.com/*",
+    "https://*.bytedance.com/*",
+    "https://*.bytecdn.cn/*",
+    "https://*.pstatp.com/*",
+    "https://*.snssdk.com/*",
+    "https://*.iesdouyin.com/*",
+    "https://x.com/*",
+    "https://www.x.com/*",
+    "https://twitter.com/*",
+    "https://www.twitter.com/*",
+    "https://pbs.twimg.com/*",
+    "https://video.twimg.com/*"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "action": {
-    "default_title": "下载当前小红书帖子的全部素材"
+    "default_title": "下载当前帖子素材（X 首页请点击帖子内按钮）"
   },
   "content_scripts": [
     {
       "matches": [
-        "https://www.xiaohongshu.com/*"
+        "https://www.douyin.com/*"
+      ],
+      "js": [
+        "douyin-capture.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.xiaohongshu.com/*",
+        "https://www.douyin.com/*"
       ],
       "js": [
         "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://www.x.com/*",
+        "https://twitter.com/*",
+        "https://www.twitter.com/*"
+      ],
+      "js": [
+        "x-capture.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://www.x.com/*",
+        "https://twitter.com/*",
+        "https://www.twitter.com/*"
+      ],
+      "js": [
+        "x-content.js"
       ],
       "run_at": "document_idle"
     }
