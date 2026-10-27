@@ -16,7 +16,7 @@
     #panel{box-sizing:border-box;background:#fff;color:#403139;width:290px;padding:15px;border-radius:16px;font-size:12px;box-shadow:0 5px 25px #0002;margin-bottom:10px}#panel[hidden]{display:none}
     p{margin:0;line-height:1.7;overflow-wrap:anywhere;white-space:pre-line}progress{accent-color:#ff3158;width:100%;height:6px;margin-top:10px}nav{display:flex;gap:14px;margin-top:10px}nav button{border:0;background:none;color:#b52d4b;padding:3px 0;font-size:12px}nav button[hidden]{display:none}
     @media(max-width:700px){:host{right:12px;bottom:16px}}
-  </style><div id="panel" hidden><p role="status" aria-live="polite"></p><progress max="1" value="0"></progress><nav><button id="show" hidden>打开文件夹</button><button id="stop" hidden>停止下载</button></nav></div><button id="download" type="button" title="红薯收纳 v1.5.0 · 下载图片、封面、视频和实况" aria-label="下载本帖全部素材"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/></svg><span><b>下载本帖全部素材</b><small>PNG · 视频 · Live</small></span></button>`;
+  </style><div id="panel" hidden><p role="status" aria-live="polite"></p><progress max="1" value="0"></progress><nav><button id="show" hidden>打开文件夹</button><button id="stop" hidden>停止下载</button></nav></div><button id="download" type="button" title="红薯收纳 v1.8.1 · 下载图片、封面、视频和实况" aria-label="下载本帖全部素材"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/></svg><span><b>下载本帖全部素材</b><small>原格式图片 · 视频 · Live</small></span></button>`;
   document.documentElement.append(host);
   const $=s=>root.querySelector(s),button=$('#download'),label=$('b'),panel=$('#panel'),status=$('p'),progress=$('progress');
   let current='',polling=false,submitting=false,lastError='';
@@ -44,7 +44,7 @@
     }catch(e){error(e.message);}finally{polling=false;}
   }
   button.addEventListener('click',async()=>{
-    resetStatus();const startedId=noteId();lastError='';submitting=true;button.disabled=true;panel.hidden=false;label.textContent='正在启动…';status.textContent='正在读取本帖素材…（v1.5.0）';
+    resetStatus();const startedId=noteId();lastError='';submitting=true;button.disabled=true;panel.hidden=false;label.textContent='正在启动…';status.textContent='正在读取本帖素材…（v1.8.1）';
     try{const r=await send({type:'START'});if(noteId()!==startedId)return;if(!r?.ok)throw new Error(r?.error||'未能启动下载，请重新加载插件并刷新帖子。');}
     catch(e){if(noteId()===startedId)error(e.message);}finally{submitting=false;await update();}
   });

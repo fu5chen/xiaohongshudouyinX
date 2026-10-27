@@ -1,15 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "红薯收纳 · 小红书、抖音与 X 素材下载",
-  "version": "1.5.1",
-  "description": "在小红书、抖音和 X 帖子内保存图片、封面和视频，PNG 最大 3 MB，支持并行下载。",
+  "name": "红薯收纳 · 小红书、抖音、X 与花瓣素材下载",
+  "version": "1.8.1",
+  "description": "原格式批量并行下载；单张失败自动跳过并继续后续图片，支持仅重试未完成。",
   "minimum_chrome_version": "120",
   "permissions": [
     "activeTab",
     "scripting",
     "downloads",
     "storage",
-    "offscreen"
+    "offscreen",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "https://*.xiaohongshu.com/*",
@@ -29,7 +30,11 @@
     "https://twitter.com/*",
     "https://www.twitter.com/*",
     "https://pbs.twimg.com/*",
-    "https://video.twimg.com/*"
+    "https://video.twimg.com/*",
+    "https://huaban.com/*",
+    "https://*.huaban.com/*",
+    "https://*.huabanimg.com/*",
+    "https://*.hb.aicdn.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -81,6 +86,16 @@
       ],
       "js": [
         "x-content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://huaban.com/*",
+        "https://www.huaban.com/*"
+      ],
+      "js": [
+        "huaban-content.js"
       ],
       "run_at": "document_idle"
     }

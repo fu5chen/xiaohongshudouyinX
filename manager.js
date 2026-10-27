@@ -1,7 +1,13 @@
 import {api} from './api.js';
 import {folderName, stamp, allowedURL} from './shared.js';
 import {liveMOV} from './live-photo.js';
-import {compressPNG} from './png-limit.js';
+import {originalImage} from './image-original.js';
+
+let transfers=0;const transferWaiters=[];
+async function transferSlot(){
+  if(transfers>=6)await new Promise(resolve=>transferWaiters.push(resolve));else transfers++;
+  return ()=>{const next=transferWaiters.shift();if(next)next();else transfers--;};
+}
 
 export function createJob(job) {
 const elements=new Map();
@@ -10,7 +16,7 @@ let note, folder, running = false, stopped = false, firstDownload, results = [],
 let pairIds = {}, liveFiles = {};
 const controllers=new Set(), activeDownloads=new Set();
 let saves=Promise.resolve();
-const ext = a => a.kind === 'image' ? '.png' : a.group === 'Live' ? '.mov' : '.mp4';
+const ext = a => a.kind === 'image' ? (a.extension?'.'+a.extension:'') : a.group === 'Live' ? '.mov' : '.mp4';
 const baseName = a => a.group === 'Live' ? a.name + '_' + pairIds[a.name].slice(0,8) : a.name;
 const assetDirectory = a => `${folder}/${a.kind === 'image' ? '图片' : a.group === 'Live' ? 'MOV' : '视频'}`;
 const assetPath = a => `${assetDirectory(a)}/${baseName(a)}${ext(a)}`;
@@ -18,8 +24,12 @@ function setRow(i, text, kind = '') { rows[i].textContent = text; rows[i].classN
 function message(e) { return e?.message || String(e); }
 async function publishProgress(text) {
   if (!note) return;
-  await api.storage.session.set({['progress_' + job]:{running,done:results.filter(r=>r?.ok).length,
-    total:note.assets.length,text:text || $('status').textContent,warnings:[...note.warnings,...results.filter(r=>r && !r.ok).map(r=>r.error)]}});
+  const done=results.filter(r=>r?.ok).length,failures=results.filter(r=>r&&!r.ok);
+  const reasons=new Map();for(const r of failures)reasons.set(r.error,(reasons.get(r.error)||0)+1);
+  const warnings=[...note.warnings,...[...reasons].slice(0,5).map(([reason,count])=>`${count} 项未保存：${reason}`)];
+  if(reasons.size>5)warnings.push(`另有 ${reasons.size-5} 类失败原因，可稍后重试未完成素材。`);
+  await api.storage.session.set({['progress_' + job]:{running,done,failed:failures.length,processed:done+failures.length,
+    total:note.assets.length,text:text || $('status').textContent,warnings}});
 }
 async function saveLiveFile(blob,path) {
   if (stopped) throw new Error('已停止');
@@ -63,10 +73,10 @@ async function saveBlob(blob, filename) {
 async function obtain(url, kind) {
   if (!allowedURL(url)) throw new Error('资源地址不在允许的媒体域名中');
   const controller = new AbortController();controllers.add(controller);
-  const timer = setTimeout(() => controller.abort(), 180000);
+  const timer = setTimeout(() => controller.abort(), note.platform==='huaban'?45000:180000);
   try {
     const response = await fetch(url, {credentials:'omit', signal:controller.signal, referrerPolicy:'no-referrer'});
-    if (!response.ok) throw new Error('资源服务器返回 HTTP ' + response.status);
+    if (!response.ok) throw new Error(note.platform==='huaban'&&[403,429,567].includes(response.status)?'花瓣图片服务器拒绝请求（HTTP '+response.status+'）':'资源服务器返回 HTTP ' + response.status);
     if (!allowedURL(response.url)) throw new Error('资源重定向到了未支持的域名');
     const mime = response.headers.get('content-type') || '';
     if (/text\/|json|mpegurl/i.test(mime)) throw new Error('服务器未返回可保存的图片或视频');
@@ -82,7 +92,7 @@ async function obtain(url, kind) {
     const blob = new Blob(chunks, {type:mime});
     if (!blob.size) throw new Error('资源文件为空');
     if (kind === 'image') {
-      return await compressPNG(blob,{cancelled:()=>stopped});
+      return await originalImage(blob);
     }
     const head = new Uint8Array(await blob.slice(0,64).arrayBuffer());
     const box = String.fromCharCode(...head.slice(4,8));
@@ -101,9 +111,10 @@ async function downloadAsset(asset, index) {
     let media;
     try {
       media = await obtain(candidate.url, asset.kind);
-      if (!candidate.fallback && asset.kind === 'image' && asset.width && asset.height && (media.sourceWidth < asset.width || media.sourceHeight < asset.height)) throw new Error('候选图分辨率低于页面标注尺寸');
-    } catch(e) { last = message(e); continue; }
+      if (!candidate.fallback && asset.kind === 'image' && asset.width && asset.height && media.sourceWidth && media.sourceHeight && (media.sourceWidth < asset.width || media.sourceHeight < asset.height)) throw new Error('候选图分辨率低于页面标注尺寸');
+    } catch(e) { last = e?.name==='AbortError'?(stopped?'已停止':'图片请求超时'):message(e); continue; }
     if (stopped) throw new Error('已停止');
+    if(asset.kind==='image')asset.extension=media.extension;
     setRow(index, '正在保存到本地…');
     await publishProgress(`第 ${index+1}/${note.assets.length} 项：正在保存，请留意 Edge 下载提示`);
     let downloadId, downloadIds;
@@ -128,8 +139,9 @@ async function downloadAsset(asset, index) {
 async function persist() { saves=saves.catch(()=>{}).then(()=>api.storage.session.set({['result_' + job]:results}));await saves; }
 function updateProgress() {
   const done = results.filter(r => r?.ok).length;
-  $('progress').max = note.assets.length; $('progress').value = done;
-  $('count').textContent = `${done} / ${note.assets.length}`;
+  const failed=results.filter(r=>r&&!r.ok).length;
+  $('progress').max = note.assets.length; $('progress').value = done+failed;
+  $('count').textContent = `成功 ${done} · 跳过 ${failed} · 共 ${note.assets.length}`;
   return done;
 }
 async function run() {
@@ -145,20 +157,26 @@ async function run() {
       const i=next++;
       if (stopped) break;
       if (results[i]?.ok) continue;
+      const release=await transferSlot();
       try {
+        if(stopped)break;
         results[i] = await downloadAsset(note.assets[i],i);
-        setRow(i, results[i].compressed ? '已保存 · 已压缩到 3 MB 内' : results[i].fallback ? '已保存 · 页面显示图' : '已保存 · 水印未验证', 'ok');
-      } catch(e) { results[i] = {ok:false,error:message(e)}; setRow(i,message(e),'fail'); }
-      await persist(); updateProgress(); await publishProgress('正在并行下载本帖素材…');
+        setRow(i, results[i].fallback ? '已保存 · 页面显示图' : '已保存 · 原始文件', 'ok');
+      } catch(e) {
+        if(stopped){results[i]=null;setRow(i,'已停止，尚未保存');}
+        else{results[i]={ok:false,error:message(e)};setRow(i,'已跳过：'+message(e),'fail');}
+      }finally{release();}
+      await persist(); updateProgress(); await publishProgress('正在并行下载原始素材…');
     }
     }
-    const completed=await Promise.allSettled(Array.from({length:Math.min(3,note.assets.length)},worker));
+    const completed=await Promise.allSettled(Array.from({length:Math.min(4,note.assets.length)},worker));
     const failed=completed.find(r=>r.status==='rejected');if(failed)throw failed.reason;
   } catch(e) { taskError = '；任务异常：' + message(e); }
   finally {
     running = false; $('stop').disabled = true; $('retry').disabled = false; $('fallback').disabled = false;
     const done = updateProgress();
-    $('status').textContent = (stopped ? '已停止' : done === note.assets.length ? '已保存所有已识别素材' : '部分素材未保存') + taskError;
+    const failed=results.filter(r=>r&&!r.ok).length,processed=done+failed;
+    $('status').textContent = (stopped ? '已停止' : processed===note.assets.length ? `本批次处理完成：成功 ${done}，跳过 ${failed}` : `任务中断：成功 ${done}，跳过 ${failed}，待处理 ${note.assets.length-processed}`) + taskError;
     $('summary').textContent = `${done} 个已保存 · ${note.assets.length - done} 个未保存`;
     $('retry').textContent = done === note.assets.length ? '已完成' : '重试未完成素材';
     await publishProgress();
@@ -169,6 +187,8 @@ async function init() {
   const stored = await api.storage.session.get([job,'result_'+job,'pairs_'+job,'liveFiles_'+job]); note = stored[job];
   if (!note) throw new Error('任务已过期。请返回帖子，重新点击下载按钮。');
   results = stored['result_'+job] || [];
+  // A retry keeps successful files, but failed entries are pending again.
+  results=results.map(r=>r?.ok?r:null);
   pairIds=stored['pairs_'+job] || {};liveFiles=stored['liveFiles_'+job] || {};
   for(const a of note.assets)if(a.group==='Live')pairIds[a.name] ||= crypto.randomUUID().toUpperCase();
   await api.storage.session.set({['pairs_'+job]:pairIds});
@@ -190,9 +210,9 @@ async function init() {
   $('warnings').textContent = note.warnings.join('\n');
   note.assets.forEach((a,i) => {
     const li = document.createElement('li'), icon = document.createElement('span'), name = document.createElement('span'), detail = document.createElement('small'), state = document.createElement('span');
-    icon.className = 'fileicon'; icon.textContent = a.group === 'Live' ? 'LIVE' : a.kind === 'image' ? 'PNG' : 'MP4';
+    icon.className = 'fileicon'; icon.textContent = a.group === 'Live' ? 'LIVE' : a.kind === 'image' ? '图片' : 'MP4';
     name.className = 'filename'; name.textContent = a.group + ' / ' + baseName(a) + ext(a);
-    detail.textContent = a.group==='Live' ? (a.kind==='image'?'PNG 静态图，最大 3 MB':'MOV 动态视频，统一存入 MOV 文件夹') : a.kind === 'image' ? 'PNG 最大 3 MB，按需缩小尺寸' : '原始视频流，不重新编码';
+    detail.textContent = a.group==='Live' ? (a.kind==='image'?'原格式静态图，不压缩':'MOV 动态视频，统一存入 MOV 文件夹') : a.kind === 'image' ? '原始图片文件，不压缩、不缩小' : '原始视频流，不重新编码';
     name.append(detail); li.append(icon,name,state); $('list').append(li); rows.push(state);
     setRow(i, results[i]?.ok ? '已保存' : '等待下载', results[i]?.ok ? 'ok' : '');
   });
